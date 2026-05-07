@@ -25,6 +25,9 @@ groups/*
 .env
 .env*
 
+# Local setup notes
+SETUP-NOTES.md
+
 # Temp files
 .tmp-*
 
