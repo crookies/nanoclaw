@@ -1,0 +1,15 @@
+[Unit]
+Description=Crookery Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=CROOKERY_BACKEND_DIR
+Environment=PYTHONPATH=.
+EnvironmentFile=-CROOKERY_BACKEND_DIR/.env
+ExecStart=CROOKERY_UVICORN main:app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { LayoutDashboard, MessageSquare, Moon, Sun, Zap, Wifi, WifiOff } from "lucide-react";
+import { BrowserRouter, NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { LayoutDashboard, LogOut, MessageSquare, Moon, Sun, Zap, Wifi, WifiOff } from "lucide-react";
 import { useDashboardStore } from "@/store/dashboard";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { Dashboard } from "@/pages/Dashboard";
+import { Login } from "@/pages/Login";
 import { Messages } from "@/pages/Messages";
 import { AgentSessions } from "@/pages/AgentSessions";
 import { SessionDetail } from "@/pages/SessionDetail";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { cn } from "@/lib/utils";
 
 const queryClient = new QueryClient({
@@ -17,6 +19,8 @@ const queryClient = new QueryClient({
 function Sidebar() {
   const wsConnected = useDashboardStore((s) => s.wsConnected);
   useWebSocket();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
 
   const [isDark, setIsDark] = useState(
     () => document.documentElement.classList.contains("dark"),
@@ -27,6 +31,12 @@ function Sidebar() {
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem("crookery-theme", next ? "dark" : "light");
     setIsDark(next);
+  }
+
+  async function handleLogout() {
+    await fetch("/auth/logout", { method: "POST", credentials: "include" });
+    qc.removeQueries({ queryKey: ["auth-me"] });
+    navigate("/login", { replace: true });
   }
 
   const nav = [
@@ -67,7 +77,7 @@ function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="px-5 py-4 border-t border-border">
+      <div className="px-4 py-4 border-t border-border flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
           {wsConnected ? (
             <>
@@ -79,6 +89,13 @@ function Sidebar() {
             </>
           )}
         </span>
+        <button
+          onClick={handleLogout}
+          title="Se déconnecter"
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
       </div>
     </aside>
   );
@@ -104,7 +121,17 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Layout />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
       </BrowserRouter>
     </QueryClientProvider>
   );

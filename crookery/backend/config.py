@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     nanoclaw_root: str = _default_nanoclaw_root()
     crookery_host: str = "127.0.0.1"
     crookery_port: int = 4123
+    crookery_password_hash: str = ""
 
     @property
     def central_db_path(self) -> Path:

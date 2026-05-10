@@ -16,12 +16,12 @@ cd crookery/frontend
 npm run dev
 ```
 
-`npm run build` is for production only. In production, FastAPI serves the Vite build on `:4123`.
+`npm run build` is for production only. In production, a single FastAPI process on `:4123` serves both the API and the Vite build.
 
 ```bash
-# Production (single process)
-cd crookery/backend
-PYTHONPATH=. .venv/bin/uvicorn main:app --host 127.0.0.1 --port 4123
+# Production (single process, from crookery/)
+make build
+make prod   # reads CROOKERY_HOST / CROOKERY_PORT from environment or backend/.env
 ```
 
 ---
@@ -30,11 +30,17 @@ PYTHONPATH=. .venv/bin/uvicorn main:app --host 127.0.0.1 --port 4123
 
 ```
 crookery/
+├── Makefile                      # backend, frontend, dev, build, prod, set-password, install-service
+├── crookery.service.template     # systemd user unit template (paths filled by make install-service)
+├── scripts/
+│   └── set_password.py           # interactive bcrypt hash writer → backend/.env
 ├── backend/
-│   ├── main.py               # FastAPI app, WebSocket /ws, spa_fallback catch-all for prod
-│   ├── config.py             # Settings (pydantic-settings): nanoclaw_root auto-detected
+│   ├── main.py               # FastAPI app, auth middleware, WebSocket /ws, spa_fallback
+│   ├── config.py             # Settings (pydantic-settings): nanoclaw_root, host, port, password_hash
+│   ├── auth.py               # In-memory session store: create_session, is_valid_session, verify_password
 │   ├── db.py                 # central_db(), session_db(), iter_session_db_paths()
 │   ├── routers/
+│   │   ├── auth.py           # POST /auth/login  POST /auth/logout  GET /auth/me
 │   │   ├── metrics.py        # GET /api/metrics
 │   │   ├── agents.py         # GET /api/agents
 │   │   ├── messages.py       # GET /api/messages  GET /api/messages/{id}
@@ -50,10 +56,10 @@ crookery/
 │       └── logs_service.py        # tail nanoclaw.log, filter by sessionId + level
 └── frontend/
     ├── index.html             # inline script: reads localStorage('crookery-theme') before render
-    ├── vite.config.ts         # proxy /api and /ws → :8000 in dev
+    ├── vite.config.ts         # proxy /api, /auth, and /ws → :8000 in dev
     └── src/
-        ├── App.tsx            # BrowserRouter + sidebar layout + Routes + dark/light toggle
-        ├── index.css          # oklch CSS vars (from spec/index.css) + Tailwind v4
+        ├── App.tsx            # BrowserRouter + Routes: /login (public) + /* (ProtectedRoute)
+        ├── index.css          # oklch CSS vars + Tailwind v4
         ├── store/dashboard.ts # Zustand: metrics, agents, wsConnected, activeAgent
         ├── lib/
         │   ├── utils.ts       # cn()
@@ -65,6 +71,7 @@ crookery/
         │   └── useWebSocket.ts # WS connect + exponential reconnect
         ├── components/
         │   ├── ui/            # shadcn-style: Card, Badge, Button, Input, Select, Sheet
+        │   ├── ProtectedRoute # calls GET /auth/me on mount + every 5min; redirects to /login on 401
         │   ├── StatusBadge    # colored dot: running/idle/inactive/online/offline
         │   ├── KpiCard        # Card + large value + label
         │   ├── AgentCard      # clickable → navigate /agents/:id  (+ session count badge)
@@ -72,18 +79,55 @@ crookery/
         │   ├── MessageDetailSheet  # slide-in Sheet with JSON content
         │   ├── LiveStatusStrip     # heartbeat age / tool in flight / processing claims
         │   └── tabs/
-        │       ├── ConversationTab  # JSONL feed: tabbed headers for all entry types,
-        │       │                    #   XML <message> parsing, channel icons, ✓/✗ tool calls
+        │       ├── ConversationTab  # JSONL feed: tabbed headers, XML parsing, channel icons, ✓/✗
         │       ├── QueueTab         # messages_in + blocker drill-down
         │       ├── TasksTab         # kind=task grouped Upcoming/Active/Failed
         │       ├── DeliveryTab      # messages_out + delivered status
         │       └── LogsTab          # nanoclaw.log stream, filtered by level+search
         └── pages/
+            ├── Login.tsx           # password form → POST /auth/login → redirect /
             ├── Dashboard.tsx       # KPI row + agent grid
             ├── Messages.tsx        # MessageTable + Sheet
             ├── AgentSessions.tsx   # session list for an agent group
             └── SessionDetail.tsx   # session detail: fixed header + internal scroll tabs
 ```
+
+---
+
+## Authentication
+
+### Overview
+
+Single-user password authentication backed by a bcrypt hash. Disabled when `CROOKERY_PASSWORD_HASH` is not set (suitable for local dev).
+
+### Password storage
+
+The bcrypt hash is stored in `backend/.env` under `CROOKERY_PASSWORD_HASH`. Generate it interactively:
+
+```bash
+cd crookery && make set-password
+```
+
+`scripts/set_password.py` prompts for a password, hashes it with `bcrypt.gensalt()`, and writes (or updates) the `CROOKERY_PASSWORD_HASH` line in `backend/.env`. The server reads this via pydantic-settings at startup.
+
+### Session flow
+
+1. Browser submits password to `POST /auth/login`.
+2. Server verifies with `bcrypt.checkpw`; on success, generates a `secrets.token_urlsafe(32)` token and stores it in an in-memory dict.
+3. Response sets a `crookery_session` cookie (`HttpOnly`, `SameSite=strict`).
+4. All subsequent `/api/*` requests are gated by `_AuthMiddleware` in `main.py`:
+   - reads `crookery_session` cookie
+   - returns `401` if token not in the session store
+5. WebSocket `/ws` checks the cookie before `accept()`; closes with code `4401` if invalid.
+6. `POST /auth/logout` removes the token from the store and clears the cookie.
+
+### Session store
+
+In-memory dict (`auth.py:_active_sessions`) — sessions are lost on restart. This is intentional: no persistence complexity, and the user just logs in again.
+
+### Frontend auth guard
+
+`ProtectedRoute` wraps all routes except `/login`. On mount it calls `GET /auth/me` via TanStack Query (`staleTime: 60s`, `refetchInterval: 5min`). A `401` response redirects to `/login`. A logout button in the sidebar calls `POST /auth/logout` and navigates to `/login`.
 
 ---
 
@@ -154,30 +198,34 @@ The JSONL filename is the SDK session ID. It is stored in `outbound.db:session_s
 
 | Endpoint | Source | Notes |
 |----------|--------|-------|
+| `POST /auth/login` | `auth.py` | body: `{password}`, sets `crookery_session` cookie |
+| `POST /auth/logout` | `auth.py` | revokes session, clears cookie |
+| `GET /auth/me` | `auth.py` | 200 if authenticated (or auth disabled), 401 otherwise |
 | `GET /api/metrics` | systemctl + v2.db + scan inbound DBs | status: online/warning/offline |
 | `GET /api/agents` | v2.db JOIN sessions + scan session DBs | messages_in + messages_out per agent |
 | `GET /api/messages` | scan all session DBs | params: agent, direction (in/out/all), search, page, limit |
 | `GET /api/messages/{id}` | scan session DBs by id | returns parsed JSON content |
-| `WS /ws` | metrics every 10s | payload: `{type: "metrics", data: {...}}` |
+| `WS /ws` | metrics every 10s | payload: `{type: "metrics", data: {...}}`; closes 4401 if not authenticated |
 | `GET /api/agents/{ag}/sessions` | v2.db JOIN messaging_groups + scan inbound DBs | queue counts + blockers per session |
 | `GET /api/agents/{ag}/sessions/{sess}` | v2.db + .heartbeat + outbound.db | header + liveness (heartbeat, container_state, processing_ack) |
 | `GET /api/agents/{ag}/sessions/{sess}/queue` | inbound.db + v2.db | messages_in + blockers (approvals, questions) |
 | `GET /api/agents/{ag}/sessions/{sess}/delivery` | outbound.db + inbound.db:delivered | messages_out enriched with delivery status |
 | `GET /api/agents/{ag}/sessions/{sess}/conversation` | outbound.db:session_state + .jsonl | parsed transcript: user/assistant/tool_use/tool_result |
-| `GET /api/agents/{ag}/sessions/{sess}/logs` | logs/nanoclaw.log | tail + grep sessionId + level/search filter, params: level, search, limit |
+| `GET /api/agents/{ag}/sessions/{sess}/logs` | logs/nanoclaw.log | tail + grep sessionId + level/search filter |
 
 ---
 
 ## Frontend routing
 
 ```
+/login                          → Login (password form — public, no auth required)
 /                               → Dashboard (KPIs + agent cards)
 /messages                       → Communications (MessageTable + Sheet)
 /agents/:agentId                → AgentSessions (session list)
 /agents/:agentId/sessions/:sessionId → SessionDetail (header + live strip + 5 tabs)
 ```
 
-Clicking an AgentCard navigates to `/agents/:agentId`.
+All routes except `/login` are wrapped in `ProtectedRoute`. Clicking an AgentCard navigates to `/agents/:agentId`.
 
 ---
 
@@ -220,7 +268,7 @@ SDK entries included:
 
 ## Design / colors
 
-Tailwind v4 with oklch CSS variables defined in `src/index.css` (copied from `spec/index.css`).
+Tailwind v4 with oklch CSS variables defined in `src/index.css`.
 Dark mode by default, Sun/Moon toggle in the sidebar; preference persisted in `localStorage('crookery-theme')` and applied by an inline script in `index.html` before React renders (prevents flash).
 
 Semantic color mapping:
@@ -275,7 +323,7 @@ Other pages (Dashboard, Messages, AgentSessions) continue scrolling via `<main o
 
 ## Production serving (SPA fallback)
 
-`main.py` no longer uses `StaticFiles(html=True)` mounted at `/` (unreliable behavior for SPA paths). Instead, an explicit catch-all route:
+`main.py` uses an explicit catch-all route rather than `StaticFiles(html=True)` (unreliable for SPA paths):
 
 ```python
 @app.get("/{full_path:path}")
@@ -286,7 +334,21 @@ async def spa_fallback(full_path: str):
     return FileResponse(str(_frontend_dist / "index.html"))
 ```
 
-Vite assets (`/assets/*.js`, `favicon.ico`, etc.) are served directly if the file exists; otherwise `index.html` (SPA routing).
+Vite assets (`/assets/*.js`, `favicon.ico`, etc.) are served directly if the file exists; otherwise `index.html` (SPA routing). The auth middleware intentionally does not gate static assets — the frontend handles the redirect to `/login`.
+
+---
+
+## Systemd service
+
+The `crookery.service.template` is a user-unit template with two placeholders (`CROOKERY_BACKEND_DIR`, `CROOKERY_UVICORN`) filled at install time by `make install-service`:
+
+```bash
+make install-service   # writes ~/.config/systemd/user/crookery.service, enables unit
+systemctl --user start crookery
+make uninstall-service # disables and removes the unit
+```
+
+`EnvironmentFile=-CROOKERY_BACKEND_DIR/.env` means the file is optional — if absent, uvicorn uses the defaults from `config.py` (`host: 127.0.0.1`, `port: 4123`). Set `CROOKERY_HOST=0.0.0.0` in `.env` to bind on all interfaces for LAN/VPN access.
 
 ---
 
@@ -304,5 +366,5 @@ This lets the dashboard display channel icons without extra API requests. Sessio
 
 - Token monitoring: Recharts graphs (AreaChart) from `.claude-shared/projects/*.jsonl`
 - Live logs: SSE or WS stream from `logs/nanoclaw.log`
-- System control: restart agent (requires auth)
+- System control: restart agent
 - Agent config: CLAUDE.md editing via form
