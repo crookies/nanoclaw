@@ -113,6 +113,15 @@ RUN --mount=type=cache,target=/root/.cache/pnpm \
     pnpm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" && \
     bash -c 'find /pnpm -name "claude-code" -type d -path "*/node_modules/@anthropic-ai/claude-code" | head -1 | xargs -I {} bash -c "cd {} && node install.cjs || true"'
 
+# ---- Gmail MCP stubs (OneCLI-managed placeholders, no real secrets) ----------
+RUN mkdir -p /home/node/.gmail-mcp && \
+    printf '{"installed":{"client_id":"onecli-managed.apps.googleusercontent.com","client_secret":"onecli-managed","redirect_uris":["http://localhost:3000/oauth2callback"]}}\n' \
+      > /home/node/.gmail-mcp/gcp-oauth.keys.json && \
+    printf '{"access_token":"onecli-managed","refresh_token":"onecli-managed","token_type":"Bearer","expiry_date":99999999999999,"scope":"https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send"}\n' \
+      > /home/node/.gmail-mcp/credentials.json && \
+    chown -R node:node /home/node/.gmail-mcp && \
+    chmod 600 /home/node/.gmail-mcp/gcp-oauth.keys.json /home/node/.gmail-mcp/credentials.json
+
 # ---- Entrypoint --------------------------------------------------------------
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

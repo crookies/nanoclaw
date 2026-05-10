@@ -183,7 +183,9 @@ function formatSingleChat(msg: MessageInRow): string {
   // removed between when the message was received and when it's being processed.
   const fromDest = findByRouting(msg.channel_type, msg.platform_id);
   const fromAttr = fromDest
-    ? ` from="${escapeXml(fromDest.name)}"`
+    ? ` from="${escapeXml(fromDest.name)}"` +
+      (fromDest.channelType ? ` from-channel="${escapeXml(fromDest.channelType)}"` : '') +
+      ` from-type="${fromDest.type}"`
     : msg.channel_type || msg.platform_id
       ? ` from="unknown:${escapeXml(msg.channel_type || '')}:${escapeXml(msg.platform_id || '')}"`
       : '';

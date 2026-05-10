@@ -1,5 +1,28 @@
 {
   "sandbox": {
     "enabled": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm exec tsx scripts/q.ts *)",
+      "Bash(systemctl --user status *)",
+      "Bash(systemctl --user is-active *)",
+      "Bash(systemctl --user list-units *)",
+      "Bash(systemctl --user list-unit-files *)",
+      "Bash(systemctl --user cat *)",
+      "Bash(curl -s http://127.0.0.1:*)",
+      "Bash(curl -s http://localhost:*)",
+      "Bash(onecli --help *)",
+      "Bash(onecli apps *)",
+      "Bash(onecli agents list *)",
+      "Bash(onecli secrets list *)",
+      "Bash(lsblk *)",
+      "Bash(docker info)",
+      "mcp__gmail__search_emails",
+      "mcp__todoist__todoist_task_get",
+      "mcp__openclaw__sessions_history",
+      "mcp__openclaw__sessions_list",
+      "mcp__google-drive__getCalendarEvents"
+    ]
   }
 }

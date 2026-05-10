@@ -410,6 +410,7 @@ function dispatchResultText(text: string, routing: RoutingContext): void {
 
   let match: RegExpExecArray | null;
   let sent = 0;
+  let attempted = 0; // blocks present but dropped (unknown destination)
   let lastIndex = 0;
   const scratchpadParts: string[] = [];
 
@@ -425,6 +426,7 @@ function dispatchResultText(text: string, routing: RoutingContext): void {
     if (!dest) {
       log(`Unknown destination in <message to="${toName}">, dropping block`);
       scratchpadParts.push(`[dropped: unknown destination "${toName}"] ${body}`);
+      attempted++;
       continue;
     }
     sendToDestination(dest, body, routing);
@@ -436,10 +438,12 @@ function dispatchResultText(text: string, routing: RoutingContext): void {
 
   const scratchpad = stripInternalTags(scratchpadParts.join(''));
 
-  // Single-destination shortcut: the agent wrote plain text — send to
-  // the session's originating channel (from session_routing) if available,
-  // otherwise fall back to the single destination.
-  if (sent === 0 && scratchpad) {
+  // Single-destination shortcut: the agent wrote plain text with no
+  // <message> blocks at all — send to the session's originating channel.
+  // Guard: if blocks were present but all dropped (attempted > 0), do NOT
+  // fall through to the channel — that would leak internal "[dropped: ...]"
+  // text to the user.
+  if (sent === 0 && attempted === 0 && scratchpad) {
     if (routing.channelType && routing.platformId) {
       // Reply to the channel/thread the message came from
       writeMessageOut({
@@ -464,7 +468,7 @@ function dispatchResultText(text: string, routing: RoutingContext): void {
     log(`[scratchpad] ${scratchpad.slice(0, 500)}${scratchpad.length > 500 ? '…' : ''}`);
   }
 
-  if (sent === 0 && text.trim()) {
+  if (sent === 0 && attempted === 0 && text.trim()) {
     log(`WARNING: agent output had no <message to="..."> blocks — nothing was sent`);
   }
 }

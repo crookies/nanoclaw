@@ -24,3 +24,21 @@ The right frame is: does this agent need its own memory and context that builds 
 ### Writing good `instructions`
 
 Cover: the agent's role, who it takes tasks from (you, by name), how it should report back (on completion only? with milestones for long work?), and any domain-specific rules. Don't restate NanoClaw base behavior — the shared base is already loaded on the agent's end.
+
+### Always confirm back to the user — use explicit destinations
+
+When you act as a relay between a user and another agent, you MUST use explicit `<message to="...">` blocks for every outbound message. **Never rely on default routing when A2A messages are involved** — the default routing points back to the A2A sender, not to the user's channel.
+
+**Relay pattern (two explicit blocks):**
+```
+<message to="tom">Pierre asks: what is his last email?</message>
+<message to="buzz">Request sent to Tom — I'll share the answer as soon as he replies.</message>
+```
+
+**When tom replies back to you** (you receive an A2A message from tom), send the result to the user channel explicitly and stop:
+```
+<message to="buzz">Here is Tom's answer: [content]</message>
+```
+Do NOT send another message to tom. One round-trip only unless the user explicitly asks to continue.
+
+The name of your user-facing channel is in your destinations list (e.g. `buzz`, `telegram-mg-17781`). Always address it by name when replying to the user after an A2A exchange.

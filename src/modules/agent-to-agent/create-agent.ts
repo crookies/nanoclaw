@@ -9,7 +9,7 @@ import path from 'path';
 
 import { GROUPS_DIR } from '../../config.js';
 import { createAgentGroup, getAgentGroup, getAgentGroupByFolder } from '../../db/agent-groups.js';
-import { getSession } from '../../db/sessions.js';
+import { getSession, getSessionsByAgentGroup } from '../../db/sessions.js';
 import { wakeContainer } from '../../container-runner.js';
 import { initGroupFilesystem } from '../../group-init.js';
 import { log } from '../../log.js';
@@ -114,6 +114,17 @@ export async function handleCreateAgent(content: Record<string, unknown>, sessio
   // — forgetting this causes "dropped: unknown destination" when the parent
   // tries to send to the newly-created child.
   writeDestinations(session.agent_group_id, session.id);
+
+  // Also refresh all other active sessions of the same group so they see the
+  // new destination immediately. Without this, a parallel session (e.g. a
+  // Discord session running alongside the Telegram one that triggered
+  // create_agent) keeps a stale destinations table and formats incoming A2A
+  // replies as "unknown:agent:<id>" instead of the agent name.
+  for (const s of getSessionsByAgentGroup(sourceGroup.id)) {
+    if (s.id !== session.id && s.status === 'active') {
+      writeDestinations(sourceGroup.id, s.id);
+    }
+  }
 
   // Fire-and-forget notification back to the creator
   notifyAgent(
