@@ -23,6 +23,7 @@ export interface ContainerConfigRow {
   mcp_servers: string; // JSON: Record<string, McpServerConfig>
   packages_apt: string; // JSON: string[]
   packages_npm: string; // JSON: string[]
+  packages_pip: string; // JSON: string[]
   additional_mounts: string; // JSON: AdditionalMountConfig[]
   cli_scope: string; // 'disabled' | 'group' | 'global'
   updated_at: string;

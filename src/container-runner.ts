@@ -473,7 +473,8 @@ export async function buildAgentGroupImage(agentGroupId: string): Promise<void> 
   if (!configRow) throw new Error('Container config not found');
   const aptPackages = JSON.parse(configRow.packages_apt) as string[];
   const npmPackages = JSON.parse(configRow.packages_npm) as string[];
-  if (aptPackages.length === 0 && npmPackages.length === 0) {
+  const pipPackages = JSON.parse(configRow.packages_pip ?? '[]') as string[];
+  if (aptPackages.length === 0 && npmPackages.length === 0 && pipPackages.length === 0) {
     throw new Error('No packages to install. Use install_packages first.');
   }
 
@@ -489,11 +490,18 @@ export async function buildAgentGroupImage(agentGroupId: string): Promise<void> 
     const allowlist = npmPackages.map((p) => `echo 'only-built-dependencies[]=${p}' >> /root/.npmrc`).join(' && ');
     dockerfile += `RUN ${allowlist} && pnpm install -g ${npmPackages.join(' ')}\n`;
   }
+  if (pipPackages.length > 0) {
+    // Bootstrap python3 + pip + uv on demand. uv is not in the base image —
+    // it gets installed here so groups that don't need Python pay no weight.
+    dockerfile +=
+      `RUN apt-get update && apt-get install -y python3 python3-pip && rm -rf /var/lib/apt/lists/*\n` +
+      `RUN pip3 install uv && uv pip install --system ${pipPackages.join(' ')}\n`;
+  }
   dockerfile += 'USER node\n';
 
   const imageTag = `${CONTAINER_IMAGE_BASE}:${agentGroupId}`;
 
-  log.info('Building per-agent-group image', { agentGroupId, imageTag, apt: aptPackages, npm: npmPackages });
+  log.info('Building per-agent-group image', { agentGroupId, imageTag, apt: aptPackages, npm: npmPackages, pip: pipPackages });
 
   // Write Dockerfile to temp file and build
   const tmpDockerfile = path.join(DATA_DIR, `Dockerfile.${agentGroupId}`);
