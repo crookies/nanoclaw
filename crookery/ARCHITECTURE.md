@@ -1,10 +1,10 @@
 # Crookery — Architecture
 
-Dashboard de monitoring pour NanoClaw. SPA React consommant une API FastAPI qui lit directement les SQLite de NanoClaw en lecture seule.
+Real-time monitoring dashboard for NanoClaw. React SPA consuming a FastAPI backend that reads NanoClaw's SQLite databases read-only.
 
 ---
 
-## Démarrage dev
+## Dev startup
 
 ```bash
 # Backend (port 8000)
@@ -16,10 +16,10 @@ cd crookery/frontend
 npm run dev
 ```
 
-`npm run build` seulement pour la prod. En prod, FastAPI sert le build Vite sur `:4123`.
+`npm run build` is for production only. In production, FastAPI serves the Vite build on `:4123`.
 
 ```bash
-# Prod (un seul processus)
+# Production (single process)
 cd crookery/backend
 PYTHONPATH=. .venv/bin/uvicorn main:app --host 127.0.0.1 --port 4123
 ```
@@ -31,8 +31,8 @@ PYTHONPATH=. .venv/bin/uvicorn main:app --host 127.0.0.1 --port 4123
 ```
 crookery/
 ├── backend/
-│   ├── main.py               # app FastAPI, WebSocket /ws, spa_fallback catch-all prod
-│   ├── config.py             # Settings (pydantic-settings) : nanoclaw_root auto-détecté
+│   ├── main.py               # FastAPI app, WebSocket /ws, spa_fallback catch-all for prod
+│   ├── config.py             # Settings (pydantic-settings): nanoclaw_root auto-detected
 │   ├── db.py                 # central_db(), session_db(), iter_session_db_paths()
 │   ├── routers/
 │   │   ├── metrics.py        # GET /api/metrics
@@ -40,148 +40,148 @@ crookery/
 │   │   ├── messages.py       # GET /api/messages  GET /api/messages/{id}
 │   │   └── sessions.py       # GET /api/agents/{ag}/sessions[/{sess}[/queue|delivery|conversation|logs]]
 │   └── services/
-│       ├── metrics_service.py     # uptime (systemctl), statut, total messages
-│       ├── agent_service.py       # agents + JOIN sessions + compteurs messages
+│       ├── metrics_service.py     # uptime (systemctl), status, total messages
+│       ├── agent_service.py       # agents + JOIN sessions + message counts
 │       ├── message_service.py     # scan session DBs, merge in/out, pagination, search
-│       ├── session_service.py     # liste sessions + détail (heartbeat, container_state, claims)
-│       ├── queue_service.py       # messages_in + blockages (pending_approvals/questions)
+│       ├── session_service.py     # session list + detail (heartbeat, container_state, claims)
+│       ├── queue_service.py       # messages_in + blockers (pending_approvals/questions)
 │       ├── delivery_service.py    # messages_out JOIN delivered (inbound.db)
-│       ├── conversation_service.py  # parsing JSONL SDK → entries typées
-│       └── logs_service.py        # tail nanoclaw.log, filtre par sessionId + level
+│       ├── conversation_service.py  # JSONL SDK parsing → typed entries
+│       └── logs_service.py        # tail nanoclaw.log, filter by sessionId + level
 └── frontend/
-    ├── index.html             # script inline : lit localStorage('crookery-theme') avant rendu
-    ├── vite.config.ts         # proxy /api et /ws → :8000 en dev
+    ├── index.html             # inline script: reads localStorage('crookery-theme') before render
+    ├── vite.config.ts         # proxy /api and /ws → :8000 in dev
     └── src/
-        ├── App.tsx            # BrowserRouter + sidebar layout + Routes + toggle dark/light
-        ├── index.css          # CSS vars oklch (depuis spec/index.css) + Tailwind v4
-        ├── store/dashboard.ts # Zustand : metrics, agents, wsConnected, activeAgent
+        ├── App.tsx            # BrowserRouter + sidebar layout + Routes + dark/light toggle
+        ├── index.css          # oklch CSS vars (from spec/index.css) + Tailwind v4
+        ├── store/dashboard.ts # Zustand: metrics, agents, wsConnected, activeAgent
         ├── lib/
         │   ├── utils.ts       # cn()
         │   └── time.ts        # formatRelative, formatDate, formatDateTime
         ├── hooks/
-        │   ├── useApi.ts      # TanStack Query : useMetrics, useAgents, useMessages (poll 10s)
+        │   ├── useApi.ts      # TanStack Query: useMetrics, useAgents, useMessages (poll 10s)
         │   │                  #   + useSessions, useSessionDetail, useSessionQueue,
         │   │                  #     useSessionDelivery, useSessionConversation, useSessionLogs
-        │   └── useWebSocket.ts # WS connect + reconnect exponentiel
+        │   └── useWebSocket.ts # WS connect + exponential reconnect
         ├── components/
-        │   ├── ui/            # shadcn-style : Card, Badge, Button, Input, Select, Sheet
-        │   ├── StatusBadge    # dot coloré : running/idle/inactive/online/offline
-        │   ├── KpiCard        # Card + grande valeur + label
-        │   ├── AgentCard      # cliquable → navigate /agents/:id  (+ session count badge)
-        │   ├── MessageTable   # table triable + filtres + pagination
-        │   ├── MessageDetailSheet  # Sheet slide-in avec JSON content
+        │   ├── ui/            # shadcn-style: Card, Badge, Button, Input, Select, Sheet
+        │   ├── StatusBadge    # colored dot: running/idle/inactive/online/offline
+        │   ├── KpiCard        # Card + large value + label
+        │   ├── AgentCard      # clickable → navigate /agents/:id  (+ session count badge)
+        │   ├── MessageTable   # sortable table + filters + pagination
+        │   ├── MessageDetailSheet  # slide-in Sheet with JSON content
         │   ├── LiveStatusStrip     # heartbeat age / tool in flight / processing claims
         │   └── tabs/
-        │       ├── ConversationTab  # feed JSONL : headers tabulés pour tous les types,
-        │       │                    #   parsing XML <message>, icônes canal, ✓/✗ tool calls
-        │       ├── QueueTab         # messages_in + blockages drill-down
-        │       ├── TasksTab         # kind=task groupés Upcoming/Active/Failed
+        │       ├── ConversationTab  # JSONL feed: tabbed headers for all entry types,
+        │       │                    #   XML <message> parsing, channel icons, ✓/✗ tool calls
+        │       ├── QueueTab         # messages_in + blocker drill-down
+        │       ├── TasksTab         # kind=task grouped Upcoming/Active/Failed
         │       ├── DeliveryTab      # messages_out + delivered status
-        │       └── LogsTab          # stream nanoclaw.log filtré, filtre level+search
+        │       └── LogsTab          # nanoclaw.log stream, filtered by level+search
         └── pages/
-            ├── Dashboard.tsx       # KPI row + grille agents
+            ├── Dashboard.tsx       # KPI row + agent grid
             ├── Messages.tsx        # MessageTable + Sheet
-            ├── AgentSessions.tsx   # liste des sessions d'un agent group
-            └── SessionDetail.tsx   # détail session : header fixe + scroll interne tabs
+            ├── AgentSessions.tsx   # session list for an agent group
+            └── SessionDetail.tsx   # session detail: fixed header + internal scroll tabs
 ```
 
 ---
 
-## Accès aux données NanoClaw
+## NanoClaw data access
 
-### Chemins (depuis `config.py`)
+### Paths (from `config.py`)
 
-| Variable | Valeur résolue |
-|----------|---------------|
-| `settings.nanoclaw_root` | `/home/crooks/nanoclaw` (auto-détecté : parent de `crookery/`) |
+| Variable | Resolved value |
+|----------|----------------|
+| `settings.nanoclaw_root` | `/home/crooks/nanoclaw` (auto-detected: parent of `crookery/`) |
 | `settings.central_db_path` | `data/v2.db` |
 | `settings.sessions_dir` | `data/v2-sessions/` |
 | `settings.logs_dir` | `logs/` |
 
-### Ouverture SQLite (toujours readonly)
+### SQLite open (always read-only)
 
 ```python
 conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
 conn.execute("PRAGMA busy_timeout = 2000")
 ```
 
-`nolock=1` ne fonctionne pas sur Linux — ne pas l'utiliser. `mode=ro` seul suffit.
+`nolock=1` does not work on Linux — do not use it. `mode=ro` alone is sufficient.
 
-### Structure session DBs
+### Session DB structure
 
 ```
 data/v2-sessions/
   ag-<id>/
     .claude-shared/
       projects/-workspace-agent/
-        <sdk_session_id>.jsonl   # transcript SDK (un par conversation Claude)
+        <sdk_session_id>.jsonl   # SDK transcript (one per Claude conversation)
     sess-<id>/
-      inbound.db     # messages_in, delivered (host écrit, container lit)
+      inbound.db     # messages_in, delivered (host writes, container reads)
       outbound.db    # messages_out, processing_ack, container_state, session_state
-      .heartbeat     # touché par le container toutes les ~30s
+      .heartbeat     # touched by the container every ~30s
 ```
 
-`iter_session_db_paths()` dans `db.py` yield `(ag_id, sess_id, inbound_path, outbound_path)`.
+`iter_session_db_paths()` in `db.py` yields `(ag_id, sess_id, inbound_path, outbound_path)`.
 
 ### SDK session ID
 
-Le filename du JSONL est l'ID de session SDK. Il est stocké dans `outbound.db:session_state` sous la clé `continuation:claude` (legacy : `sdk_session_id`). Si `outbound.db` n'existe pas encore, pas de transcript.
+The JSONL filename is the SDK session ID. It is stored in `outbound.db:session_state` under key `continuation:claude` (legacy: `sdk_session_id`). If `outbound.db` does not exist yet, there is no transcript.
 
-### Tables clés
+### Key tables
 
 **Central DB (`v2.db`)**
-- `agent_groups` : `id, name, folder, agent_provider, created_at`
-- `sessions` : `id, agent_group_id, messaging_group_id, status, container_status, last_active`
-- `messaging_groups` : `id, channel_type, platform_id, name`
-- `messaging_group_agents` : `messaging_group_id, agent_group_id, session_mode, ...`
-- `pending_approvals` : blockages d'actions nécessitant approbation humaine
-- `pending_questions` : questions posées par l'agent en attente de réponse
+- `agent_groups`: `id, name, folder, agent_provider, created_at`
+- `sessions`: `id, agent_group_id, messaging_group_id, status, container_status, last_active`
+- `messaging_groups`: `id, channel_type, platform_id, name`
+- `messaging_group_agents`: `messaging_group_id, agent_group_id, session_mode, ...`
+- `pending_approvals`: actions blocked pending human approval
+- `pending_questions`: questions asked by the agent awaiting a reply
 
 **Inbound DB (`messages_in`)**
-- `id, seq (PAIR), kind, timestamp, status, platform_id, channel_type, thread_id, content (JSON), tries, series_id, process_after, recurrence`
-- `status` : `pending | processing | completed | failed`
-- `delivered` : `message_out_id, platform_message_id, status, delivered_at` (delivery tracking host-side)
+- `id, seq (EVEN), kind, timestamp, status, platform_id, channel_type, thread_id, content (JSON), tries, series_id, process_after, recurrence`
+- `status`: `pending | processing | completed | failed`
+- `delivered`: `message_out_id, platform_message_id, status, delivered_at` (host-side delivery tracking)
 
 **Outbound DB (`messages_out`)**
-- `id, seq (IMPAIR), in_reply_to, timestamp, kind, platform_id, channel_type, thread_id, content (JSON)`
-- `processing_ack` : `message_id, status, status_changed` (claims de traitement actif)
-- `container_state` : singleton — `current_tool, tool_declared_timeout_ms, tool_started_at`
-- `session_state` : KV store — clé `continuation:claude` = SDK session ID courant
+- `id, seq (ODD), in_reply_to, timestamp, kind, platform_id, channel_type, thread_id, content (JSON)`
+- `processing_ack`: `message_id, status, status_changed` (active processing claims)
+- `container_state`: singleton — `current_tool, tool_declared_timeout_ms, tool_started_at`
+- `session_state`: KV store — key `continuation:claude` = current SDK session ID
 
 ---
 
-## API backend
+## Backend API
 
 | Endpoint | Source | Notes |
 |----------|--------|-------|
 | `GET /api/metrics` | systemctl + v2.db + scan inbound DBs | status: online/warning/offline |
-| `GET /api/agents` | v2.db JOIN sessions + scan session DBs | messages_in + messages_out par agent |
-| `GET /api/messages` | scan tous les session DBs | params: agent, direction (in/out/all), search, page, limit |
-| `GET /api/messages/{id}` | scan session DBs par id | retourne content JSON parsé |
-| `WS /ws` | metrics toutes les 10s | payload: `{type: "metrics", data: {...}}` |
-| `GET /api/agents/{ag}/sessions` | v2.db JOIN messaging_groups + scan inbound DBs | queue counts + blockages par session |
+| `GET /api/agents` | v2.db JOIN sessions + scan session DBs | messages_in + messages_out per agent |
+| `GET /api/messages` | scan all session DBs | params: agent, direction (in/out/all), search, page, limit |
+| `GET /api/messages/{id}` | scan session DBs by id | returns parsed JSON content |
+| `WS /ws` | metrics every 10s | payload: `{type: "metrics", data: {...}}` |
+| `GET /api/agents/{ag}/sessions` | v2.db JOIN messaging_groups + scan inbound DBs | queue counts + blockers per session |
 | `GET /api/agents/{ag}/sessions/{sess}` | v2.db + .heartbeat + outbound.db | header + liveness (heartbeat, container_state, processing_ack) |
-| `GET /api/agents/{ag}/sessions/{sess}/queue` | inbound.db + v2.db | messages_in + blockages (approvals, questions) |
-| `GET /api/agents/{ag}/sessions/{sess}/delivery` | outbound.db + inbound.db:delivered | messages_out enrichis du statut de livraison |
-| `GET /api/agents/{ag}/sessions/{sess}/conversation` | outbound.db:session_state + .jsonl | transcript parsé : user/assistant/tool_use/tool_result |
-| `GET /api/agents/{ag}/sessions/{sess}/logs` | logs/nanoclaw.log | tail + grep sessionId + filtre level/search, params: level, search, limit |
+| `GET /api/agents/{ag}/sessions/{sess}/queue` | inbound.db + v2.db | messages_in + blockers (approvals, questions) |
+| `GET /api/agents/{ag}/sessions/{sess}/delivery` | outbound.db + inbound.db:delivered | messages_out enriched with delivery status |
+| `GET /api/agents/{ag}/sessions/{sess}/conversation` | outbound.db:session_state + .jsonl | parsed transcript: user/assistant/tool_use/tool_result |
+| `GET /api/agents/{ag}/sessions/{sess}/logs` | logs/nanoclaw.log | tail + grep sessionId + level/search filter, params: level, search, limit |
 
 ---
 
-## Routing frontend
+## Frontend routing
 
 ```
-/                               → Dashboard (KPI + agent cards)
+/                               → Dashboard (KPIs + agent cards)
 /messages                       → Communications (MessageTable + Sheet)
-/agents/:agentId                → AgentSessions (liste des sessions)
+/agents/:agentId                → AgentSessions (session list)
 /agents/:agentId/sessions/:sessionId → SessionDetail (header + live strip + 5 tabs)
 ```
 
-Clic sur AgentCard → `/agents/:agentId`.
+Clicking an AgentCard navigates to `/agents/:agentId`.
 
 ---
 
-## État frontend
+## Frontend state
 
 ### Zustand (`store/dashboard.ts`)
 
@@ -189,93 +189,93 @@ Clic sur AgentCard → `/agents/:agentId`.
 { metrics, agents, wsConnected, activeAgent }
 ```
 
-- `activeAgent` : conservé pour filtrage manuel dans Messages page
-- `metrics` / `agents` : mis à jour par WS (toutes les 10s) ET par TanStack Query (30s / 15s)
+- `activeAgent`: kept for manual filtering in the Messages page
+- `metrics` / `agents`: updated by WS (every 10s) AND by TanStack Query (30s / 15s)
 
-### Flux données
+### Data flow
 
 ```
 WS /ws ──→ useWebSocket ──→ store.setMetrics
 REST    ──→ TanStack Query ──→ store.setAgents / return data
-AgentCard clic ──→ navigate("/agents/:id")
+AgentCard click ──→ navigate("/agents/:id")
 AgentSessions ──→ useSessions(agentId) ──→ GET /api/agents/{ag}/sessions  (poll 10s)
-SessionDetail ──→ useSessionDetail      ──→ GET /api/agents/{ag}/sessions/{sess}  (poll 5s si actif)
-              ──→ useSessionConversation ──→ /conversation   (poll 5s si actif)
-              ──→ useSessionQueue        ──→ /queue          (poll 5s si actif)
-              ──→ useSessionDelivery     ──→ /delivery       (poll 5s si actif)
-              ──→ useSessionLogs         ──→ /logs           (poll 5s si actif)
+SessionDetail ──→ useSessionDetail      ──→ GET /api/agents/{ag}/sessions/{sess}  (poll 5s if active)
+              ──→ useSessionConversation ──→ /conversation   (poll 5s if active)
+              ──→ useSessionQueue        ──→ /queue          (poll 5s if active)
+              ──→ useSessionDelivery     ──→ /delivery       (poll 5s if active)
+              ──→ useSessionLogs         ──→ /logs           (poll 5s if active)
 ```
 
-Polling inactif (container stopped) : `refetchInterval: false` — données chargées une seule fois à l'ouverture du tab.
+Inactive polling (container stopped): `refetchInterval: false` — data loaded once when the tab opens.
 
-### Parsing JSONL (conversation_service.py)
+### JSONL parsing (`conversation_service.py`)
 
-Entrées SDK retenues :
-- `type: "user"` → message humain (string) ou tool_results (array de blocks `type: "tool_result"`)
-- `type: "assistant"` → content blocks `text` et `tool_use` (les blocks `thinking` sont ignorés)
+SDK entries included:
+- `type: "user"` → human message (string) or tool_results (array of `type: "tool_result"` blocks)
+- `type: "assistant"` → content blocks `text` and `tool_use` (`thinking` blocks are ignored)
 
-Les tool_results sont indexés par `tool_use_id` et rattachés à leur `tool_use` correspondant avant envoi au frontend. Le frontend reçoit donc des entrées `assistant` avec `tool_uses[].result` déjà peuplé.
-
----
-
-## Design / couleurs
-
-Tailwind v4 avec variables CSS oklch définies dans `src/index.css` (copié de `spec/index.css`).
-Dark mode par défaut, toggle Sun/Moon dans la sidebar ; préférence persistée dans `localStorage('crookery-theme')` et appliquée par un script inline dans `index.html` avant le rendu React (évite le flash).
-
-Mapping sémantique :
-- `--secondary` (cyan) → actif / en ligne / tool name
-- `--accent` (orange) → messages sortants / avertissement
-- `--destructive` (rouge) → erreur / hors ligne / failed
-- `--muted-foreground` → inactif / texte secondaire
-- `text-yellow-400` → warnings (heartbeat stale, claims âgés, blockages)
-- `text-green-400` → succès (delivered, completed)
-
-Composants `ui/` écrits à la main (pas d'install shadcn CLI), compatibles Tailwind v4.
+`tool_result` entries are indexed by `tool_use_id` and attached to their corresponding `tool_use` before sending to the frontend. The frontend receives `assistant` entries with `tool_uses[].result` already populated.
 
 ---
 
-## ConversationTab — format des entrées
+## Design / colors
 
-Tous les types d'entrées ont un **header tabulé** pipe-séparé (`| type | heure | … |`).
+Tailwind v4 with oklch CSS variables defined in `src/index.css` (copied from `spec/index.css`).
+Dark mode by default, Sun/Moon toggle in the sidebar; preference persisted in `localStorage('crookery-theme')` and applied by an inline script in `index.html` before React renders (prevents flash).
 
-**Messages XML** (type `"user"` avec encapsulation `<message>`) :
+Semantic color mapping:
+- `--secondary` (cyan) → active / online / tool name
+- `--accent` (orange) → outbound messages / warning
+- `--destructive` (red) → error / offline / failed
+- `--muted-foreground` → inactive / secondary text
+- `text-yellow-400` → warnings (stale heartbeat, old claims, blockers)
+- `text-green-400` → success (delivered, completed)
+
+`ui/` components are hand-written (no shadcn CLI install), compatible with Tailwind v4.
+
+---
+
+## ConversationTab — entry format
+
+All entry types have a **pipe-separated tabbed header** (`| type | time | … |`).
+
+**XML messages** (type `"user"` with `<message>` wrapping):
 ```
 | Msg | 14:14 Brussels | #6 | ✈ telegram ← Crookies |
 ```
-- Parsing par regex de `<context timezone>` + `<message id from from-channel from-type sender time>`
-- Icône de canal déduite de l'attribut `from-channel` (ajouté par le container `formatter.ts`)
-  ou par heuristique sur la valeur de `from` (fallback pour les sessions existantes)
-- Timezone affichée en `text-[9px] opacity-40` (très discrète)
+- Parsed by regex from `<context timezone>` + `<message id from from-channel from-type sender time>`
+- Channel icon derived from the `from-channel` attribute (added by the container's `formatter.ts`)
+  or by heuristic on the `from` value (fallback for sessions created before this attribute was added)
+- Timezone shown in `text-[9px] opacity-40` (very subtle)
 
-**Mapping icônes** : `telegram→✈`, `discord→#`, `slack→◈`, `gmail/email→✉`, `agent→(aucune)`
+**Icon mapping**: `telegram→✈`, `discord→#`, `slack→◈`, `gmail/email→✉`, `agent→(none)`
 
-**Autres types** :
+**Other entry types**:
 | Condition | Label |
 |-----------|-------|
 | `user` + XML `<message>` | `Msg` |
-| `user` + texte brut | `User` |
-| `assistant` + texte (avec ou sans tools) | `Reply` |
-| `assistant` + tools seulement | `Tool` |
+| `user` + plain text | `User` |
+| `assistant` + text (with or without tools) | `Reply` |
+| `assistant` + tools only | `Tool` |
 
-Tool calls : badge `✓`/`✗`/`…` immédiatement après le nom du tool (vert/rouge/gris).
-
----
-
-## SessionDetail — layout scroll
-
-`SessionDetail` utilise `flex flex-col h-full` pour occuper exactement la zone visible de `<main>` :
-- **Header fixe** (`shrink-0`) : breadcrumb + bannière inactive + carte session + heartbeat strip
-- **Barre d'onglets** (`shrink-0`) : toujours visible, plus besoin de `sticky`
-- **Contenu** (`flex-1 overflow-y-auto min-h-0`) : scroll interne uniquement
-
-Les autres pages (Dashboard, Messages, AgentSessions) continuent de scroller via `<main overflow-y-auto>`.
+Tool calls: `✓`/`✗`/`…` badge immediately after the tool name (green/red/gray).
 
 ---
 
-## Serving prod (SPA fallback)
+## SessionDetail — scroll layout
 
-`main.py` n'utilise plus `StaticFiles(html=True)` monté à `/` (comportement instable pour les chemins SPA). À la place, une route catch-all explicite :
+`SessionDetail` uses `flex flex-col h-full` to fill exactly the visible area of `<main>`:
+- **Fixed header** (`shrink-0`): breadcrumb + inactive banner + session card + heartbeat strip
+- **Tab bar** (`shrink-0`): always visible, no need for `sticky`
+- **Content** (`flex-1 overflow-y-auto min-h-0`): internal scroll only
+
+Other pages (Dashboard, Messages, AgentSessions) continue scrolling via `<main overflow-y-auto>`.
+
+---
+
+## Production serving (SPA fallback)
+
+`main.py` no longer uses `StaticFiles(html=True)` mounted at `/` (unreliable behavior for SPA paths). Instead, an explicit catch-all route:
 
 ```python
 @app.get("/{full_path:path}")
@@ -286,23 +286,23 @@ async def spa_fallback(full_path: str):
     return FileResponse(str(_frontend_dist / "index.html"))
 ```
 
-Les assets Vite (`/assets/*.js`, `favicon.ico`, etc.) sont servis directement si le fichier existe ; sinon `index.html` (SPA routing).
+Vite assets (`/assets/*.js`, `favicon.ico`, etc.) are served directly if the file exists; otherwise `index.html` (SPA routing).
 
 ---
 
-## Container — enrichissement XML (`formatter.ts`)
+## Container — XML enrichment (`formatter.ts`)
 
-Le `formatter.ts` de l'agent-runner ajoute deux attributs optionnels aux balises `<message>` :
-- `from-channel` : type de canal (`"telegram"`, `"discord"`, `"slack"`, …) — présent si la destination est un canal
-- `from-type` : `"channel"` ou `"agent"` — toujours présent quand `from` est résolu
+The agent-runner's `formatter.ts` adds two optional attributes to `<message>` tags:
+- `from-channel`: channel type (`"telegram"`, `"discord"`, `"slack"`, …) — present when the origin is a channel
+- `from-type`: `"channel"` or `"agent"` — always present when `from` is resolved
 
-Permet au dashboard d'afficher des icônes de canal sans requête supplémentaire. Les sessions créées avant cet ajout n'ont pas ces attributs ; le frontend utilise une heuristique sur `from` en fallback.
+This lets the dashboard display channel icons without extra API requests. Sessions created before this addition lack these attributes; the frontend uses a `from`-based heuristic as fallback.
 
 ---
 
-## Phase 2 — fonctionnalités prévues (non implémentées)
+## Phase 2 — planned features (not yet implemented)
 
-- Monitoring tokens : graphiques Recharts (AreaChart) depuis `.claude-shared/projects/*.jsonl`
-- Logs live : SSE ou WS vers `logs/nanoclaw.log`
-- Contrôle système : restart agent (nécessite auth)
-- Config agents : édition CLAUDE.md via formulaire
+- Token monitoring: Recharts graphs (AreaChart) from `.claude-shared/projects/*.jsonl`
+- Live logs: SSE or WS stream from `logs/nanoclaw.log`
+- System control: restart agent (requires auth)
+- Agent config: CLAUDE.md editing via form
