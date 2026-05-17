@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDashboardStore } from "@/store/dashboard";
 
 export function useWebSocket() {
   const setMetrics = useDashboardStore((s) => s.setMetrics);
   const setWsConnected = useDashboardStore((s) => s.setWsConnected);
+  const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryDelayRef = useRef(1000);
@@ -26,7 +28,21 @@ export function useWebSocket() {
       ws.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
-          if (msg.type === "metrics") setMetrics(msg.data);
+          if (msg.type === "metrics") {
+            setMetrics(msg.data);
+          } else if (msg.type === "invalidate-conversation") {
+            queryClient.invalidateQueries({ queryKey: ["session-conversation", msg.agentId as string] });
+          } else if (msg.type === "invalidate") {
+            const { agentId, sessionId } = msg as { agentId: string; sessionId: string };
+            queryClient.invalidateQueries({ queryKey: ["agents"] });
+            queryClient.invalidateQueries({ queryKey: ["messages"] });
+            queryClient.invalidateQueries({ queryKey: ["sessions", agentId] });
+            queryClient.invalidateQueries({ queryKey: ["session-detail", agentId, sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["session-queue", agentId, sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["session-delivery", agentId, sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["session-conversation", agentId, sessionId] });
+            queryClient.invalidateQueries({ queryKey: ["session-logs", agentId, sessionId] });
+          }
         } catch {}
       };
 
@@ -50,5 +66,5 @@ export function useWebSocket() {
       if (retryRef.current) clearTimeout(retryRef.current);
       wsRef.current?.close();
     };
-  }, [setMetrics, setWsConnected]);
+  }, [setMetrics, setWsConnected, queryClient]);
 }

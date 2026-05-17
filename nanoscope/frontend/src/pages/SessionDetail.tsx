@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -83,9 +83,20 @@ export function SessionDetail() {
     : false;
 
   const { data: queueData } = useSessionQueue(agentId, sessionId, isActive);
-  const { data: deliveryData } = useSessionDelivery(agentId, sessionId, isActive);
-  const { data: convData } = useSessionConversation(agentId, sessionId, isActive);
+  const { data: deliveryData, refetch: refetchDelivery } = useSessionDelivery(agentId, sessionId, isActive);
+  const { data: convData, refetch: refetchConv } = useSessionConversation(agentId, sessionId, isActive);
   const { data: logsData } = useSessionLogs(agentId, sessionId, logFilters, isActive);
+
+  // Safety net: when container stops, force one final refetch of conversation + delivery
+  const prevIsActiveRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (detail === undefined) return;
+    if (prevIsActiveRef.current === true && !isActive) {
+      refetchConv();
+      refetchDelivery();
+    }
+    prevIsActiveRef.current = isActive;
+  }, [isActive, detail, refetchConv, refetchDelivery]);
 
   if (!detail) {
     return (

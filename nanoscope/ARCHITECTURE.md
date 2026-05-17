@@ -53,7 +53,9 @@ nanoscope/
 │       ├── queue_service.py       # messages_in + blockers (pending_approvals/questions)
 │       ├── delivery_service.py    # messages_out JOIN delivered (inbound.db)
 │       ├── conversation_service.py  # JSONL SDK parsing → typed entries
-│       └── logs_service.py        # tail nanoclaw.log, filter by sessionId + level
+│       ├── logs_service.py        # tail nanoclaw.log, filter by sessionId + level
+│       └── session_watcher.py     # get_session_file_mtimes: ag-*/sess-*/{inbound,outbound}.db + .heartbeat → "invalidate" WS events
+│                                  # get_jsonl_mtimes: ag-*/.claude-shared/**/*.jsonl → "invalidate-conversation" WS events
 └── frontend/
     ├── index.html             # inline script: reads localStorage('nanoscope-theme') before render
     ├── vite.config.ts         # proxy /api, /auth, and /ws → :8000 in dev
@@ -65,10 +67,10 @@ nanoscope/
         │   ├── utils.ts       # cn()
         │   └── time.ts        # formatRelative, formatDate, formatDateTime
         ├── hooks/
-        │   ├── useApi.ts      # TanStack Query: useMetrics, useAgents, useMessages (poll 10s)
-        │   │                  #   + useSessions, useSessionDetail, useSessionQueue,
-        │   │                  #     useSessionDelivery, useSessionConversation, useSessionLogs
-        │   └── useWebSocket.ts # WS connect + exponential reconnect
+        │   ├── useApi.ts      # TanStack Query hooks; WS invalidations are primary update path,
+        │   │                  #   polling is fallback (60 s global / 30 s session, foreground only)
+        │   └── useWebSocket.ts # WS connect + exponential reconnect; handles "metrics",
+        │                       #   "invalidate", "invalidate-conversation"; calls queryClient.invalidateQueries
         ├── components/
         │   ├── ui/            # shadcn-style: Card, Badge, Button, Input, Select, Sheet
         │   ├── ProtectedRoute # calls GET /auth/me on mount + every 5min; redirects to /login on 401
@@ -90,6 +92,7 @@ nanoscope/
             ├── Messages.tsx        # MessageTable + Sheet
             ├── AgentSessions.tsx   # session list for an agent group
             └── SessionDetail.tsx   # session detail: fixed header + internal scroll tabs
+                                    #   safety net: refetches conversation+delivery when isActive true→false
 ```
 
 ---
@@ -113,17 +116,22 @@ cd nanoscope && make set-password
 ### Session flow
 
 1. Browser submits password to `POST /auth/login`.
-2. Server verifies with `bcrypt.checkpw`; on success, generates a `secrets.token_urlsafe(32)` token and stores it in an in-memory dict.
+2. Server verifies with `bcrypt.checkpw`; on success, generates a signed HMAC token (`user:<ts>:<sha256-sig>`).
 3. Response sets a `nanoscope_session` cookie (`HttpOnly`, `SameSite=strict`).
 4. All subsequent `/api/*` requests are gated by `_AuthMiddleware` in `main.py`:
    - reads `nanoscope_session` cookie
-   - returns `401` if token not in the session store
+   - validates HMAC signature and 30-day expiry; returns `401` on failure
 5. WebSocket `/ws` checks the cookie before `accept()`; closes with code `4401` if invalid.
-6. `POST /auth/logout` removes the token from the store and clears the cookie.
+6. `POST /auth/logout` clears the cookie client-side (token is stateless — no server-side revocation needed).
 
-### Session store
+### Session tokens
 
-In-memory dict (`auth.py:_active_sessions`) — sessions are lost on restart. This is intentional: no persistence complexity, and the user just logs in again.
+Stateless HMAC tokens (`auth.py`). Format: `user:<unix_ts>:<hmac-sha256>`.
+
+- **Secret**: SHA-256 of `NANOSCOPE_PASSWORD_HASH` — stable across restarts, automatically invalidated if the password changes.
+- **Expiry**: 30 days, verified on every request.
+- **Logout**: clears the cookie client-side; no server store to update.
+- **No persistence needed**: tokens survive service restarts without any storage.
 
 ### Frontend auth guard
 
@@ -205,7 +213,7 @@ The JSONL filename is the SDK session ID. It is stored in `outbound.db:session_s
 | `GET /api/agents` | v2.db JOIN sessions + scan session DBs | messages_in + messages_out per agent |
 | `GET /api/messages` | scan all session DBs | params: agent, direction (in/out/all), search, page, limit |
 | `GET /api/messages/{id}` | scan session DBs by id | returns parsed JSON content |
-| `WS /ws` | metrics every 10s | payload: `{type: "metrics", data: {...}}`; closes 4401 if not authenticated |
+| `WS /ws` | metrics + session invalidations | tick 2 s: emits `{type: "invalidate", agentId, sessionId}` on `inbound/outbound.db`+`.heartbeat` mtime change; emits `{type: "invalidate-conversation", agentId}` on `.jsonl` mtime change; tick 10 s: emits `{type: "metrics", data: {...}}`; closes 4401 if not authenticated |
 | `GET /api/agents/{ag}/sessions` | v2.db JOIN messaging_groups + scan inbound DBs | queue counts + blockers per session |
 | `GET /api/agents/{ag}/sessions/{sess}` | v2.db + .heartbeat + outbound.db | header + liveness (heartbeat, container_state, processing_ack) |
 | `GET /api/agents/{ag}/sessions/{sess}/queue` | inbound.db + v2.db | messages_in + blockers (approvals, questions) |
@@ -238,23 +246,34 @@ All routes except `/login` are wrapped in `ProtectedRoute`. Clicking an AgentCar
 ```
 
 - `activeAgent`: kept for manual filtering in the Messages page
-- `metrics` / `agents`: updated by WS (every 10s) AND by TanStack Query (30s / 15s)
+- `metrics` / `agents`: `metrics` updated by WS push (every 10 s); `agents` invalidated by WS on session file change
 
 ### Data flow
 
 ```
-WS /ws ──→ useWebSocket ──→ store.setMetrics
-REST    ──→ TanStack Query ──→ store.setAgents / return data
-AgentCard click ──→ navigate("/agents/:id")
-AgentSessions ──→ useSessions(agentId) ──→ GET /api/agents/{ag}/sessions  (poll 10s)
-SessionDetail ──→ useSessionDetail      ──→ GET /api/agents/{ag}/sessions/{sess}  (poll 5s if active)
-              ──→ useSessionConversation ──→ /conversation   (poll 5s if active)
-              ──→ useSessionQueue        ──→ /queue          (poll 5s if active)
-              ──→ useSessionDelivery     ──→ /delivery       (poll 5s if active)
-              ──→ useSessionLogs         ──→ /logs           (poll 5s if active)
+WS /ws ──→ useWebSocket ──┬─→ store.setMetrics                   (type: "metrics", every 10 s)
+                          ├─→ queryClient.invalidate              (type: "invalidate", on DB/heartbeat mtime change)
+                          │    ├─ ["agents"]
+                          │    ├─ ["messages"]
+                          │    ├─ ["sessions", agentId]
+                          │    ├─ ["session-detail", agentId, sessionId]
+                          │    ├─ ["session-queue", agentId, sessionId]
+                          │    ├─ ["session-delivery", agentId, sessionId]
+                          │    ├─ ["session-conversation", agentId, sessionId]
+                          │    └─ ["session-logs", agentId, sessionId]
+                          └─→ queryClient.invalidate              (type: "invalidate-conversation", on .jsonl mtime change)
+                               └─ ["session-conversation", agentId]  ← partial key, all sessions of this agent
+
+REST (fallback polling — WS down or background tab suppressed):
+  useMetrics        ──→ GET /api/metrics                   (60 s, foreground only)
+  useAgents         ──→ GET /api/agents                    (60 s, foreground only)
+  useMessages       ──→ GET /api/messages                  (60 s, foreground only)
+  useSessions       ──→ GET /api/agents/{ag}/sessions      (60 s, foreground only)
+  useSessionDetail  ──→ GET /api/agents/{ag}/sessions/{s}  (30 s if active, foreground only)
+  + 4 session tabs  ──→ /queue /delivery /conversation /logs (30 s if active, foreground only)
 ```
 
-Inactive polling (container stopped): `refetchInterval: false` — data loaded once when the tab opens.
+All polling hooks use `refetchIntervalInBackground: false` — polling stops when the browser tab is hidden. Inactive sessions (`isActive = false`): `refetchInterval: false` — data loaded once on tab open. When `isActive` transitions `true → false` (container just stopped), `SessionDetail` triggers a final forced refetch of conversation + delivery as a safety net.
 
 ### JSONL parsing (`conversation_service.py`)
 

@@ -16,7 +16,8 @@ export function useMetrics() {
       setMetrics(data);
       return data;
     },
-    refetchInterval: 30000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -29,7 +30,8 @@ export function useAgents() {
       setAgents(data);
       return data;
     },
-    refetchInterval: 15000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -80,7 +82,8 @@ export function useMessages(filters: MessageFilters = {}) {
   return useQuery({
     queryKey: ["messages", filters],
     queryFn: () => apiFetch<MessagesResult>(`/api/messages?${params}`),
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -245,7 +248,8 @@ export function useSessions(agentId: string) {
   return useQuery({
     queryKey: ["sessions", agentId],
     queryFn: () => apiFetch<Session[]>(`/api/agents/${agentId}/sessions`),
-    refetchInterval: 10000,
+    refetchInterval: 60000,
+    refetchIntervalInBackground: false,
     enabled: !!agentId,
   });
 }
@@ -254,7 +258,8 @@ export function useSessionDetail(agentId: string, sessionId: string, isActive = 
   return useQuery({
     queryKey: ["session-detail", agentId, sessionId],
     queryFn: () => apiFetch<SessionDetail>(`/api/agents/${agentId}/sessions/${sessionId}`),
-    refetchInterval: isActive ? 5000 : false,
+    refetchInterval: isActive ? 30000 : false,
+    refetchIntervalInBackground: false,
     enabled: !!agentId && !!sessionId,
   });
 }
@@ -263,7 +268,8 @@ export function useSessionQueue(agentId: string, sessionId: string, isActive = t
   return useQuery({
     queryKey: ["session-queue", agentId, sessionId],
     queryFn: () => apiFetch<QueueResult>(`/api/agents/${agentId}/sessions/${sessionId}/queue`),
-    refetchInterval: isActive ? 5000 : false,
+    refetchInterval: isActive ? 30000 : false,
+    refetchIntervalInBackground: false,
     enabled: !!agentId && !!sessionId,
   });
 }
@@ -272,7 +278,8 @@ export function useSessionDelivery(agentId: string, sessionId: string, isActive 
   return useQuery({
     queryKey: ["session-delivery", agentId, sessionId],
     queryFn: () => apiFetch<DeliveryResult>(`/api/agents/${agentId}/sessions/${sessionId}/delivery`),
-    refetchInterval: isActive ? 5000 : false,
+    refetchInterval: isActive ? 30000 : false,
+    refetchIntervalInBackground: false,
     enabled: !!agentId && !!sessionId,
   });
 }
@@ -281,7 +288,8 @@ export function useSessionConversation(agentId: string, sessionId: string, isAct
   return useQuery({
     queryKey: ["session-conversation", agentId, sessionId],
     queryFn: () => apiFetch<ConversationResult>(`/api/agents/${agentId}/sessions/${sessionId}/conversation`),
-    refetchInterval: isActive ? 5000 : false,
+    refetchInterval: isActive ? 30000 : false,
+    refetchIntervalInBackground: false,
     enabled: !!agentId && !!sessionId,
   });
 }
@@ -301,7 +309,8 @@ export function useSessionLogs(agentId: string, sessionId: string, filters: LogF
   return useQuery({
     queryKey: ["session-logs", agentId, sessionId, filters],
     queryFn: () => apiFetch<LogsResult>(`/api/agents/${agentId}/sessions/${sessionId}/logs?${params}`),
-    refetchInterval: isActive ? 5000 : false,
+    refetchInterval: isActive ? 30000 : false,
+    refetchIntervalInBackground: false,
     enabled: !!agentId && !!sessionId,
   });
 }

@@ -12,6 +12,7 @@ from config import settings
 from routers import agents, messages, metrics, sessions
 from routers.auth import router as auth_router
 from services.metrics_service import get_metrics
+from services.session_watcher import get_jsonl_mtimes, get_session_file_mtimes
 
 app = FastAPI(title="NanoScope", version="1.0.0")
 
@@ -55,11 +56,35 @@ async def websocket_metrics(ws: WebSocket):
             await ws.close(code=4401)
             return
     await ws.accept()
+    known_mtimes: dict[tuple[str, str], float] = {}
+    known_jsonl: dict[str, float] = {}
+    tick = 0
     try:
         while True:
-            data = get_metrics()
-            await ws.send_text(json.dumps({"type": "metrics", "data": data}))
-            await asyncio.sleep(10)
+            current = get_session_file_mtimes()
+            for (ag_id, sess_id), mtime in current.items():
+                if known_mtimes.get((ag_id, sess_id), 0.0) < mtime:
+                    await ws.send_text(json.dumps({
+                        "type": "invalidate",
+                        "agentId": ag_id,
+                        "sessionId": sess_id,
+                    }))
+            known_mtimes = current
+
+            current_jsonl = get_jsonl_mtimes()
+            for ag_id, mtime in current_jsonl.items():
+                if known_jsonl.get(ag_id, 0.0) < mtime:
+                    await ws.send_text(json.dumps({
+                        "type": "invalidate-conversation",
+                        "agentId": ag_id,
+                    }))
+            known_jsonl = current_jsonl
+
+            tick += 1
+            if tick % 5 == 0:
+                data = get_metrics()
+                await ws.send_text(json.dumps({"type": "metrics", "data": data}))
+            await asyncio.sleep(2)
     except WebSocketDisconnect:
         pass
     except Exception:
