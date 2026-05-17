@@ -7,7 +7,7 @@ node_modules/
 dist/
 
 # Local data & auth
-store/
+/store/
 data/
 logs/
 
