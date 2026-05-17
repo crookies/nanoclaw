@@ -97,7 +97,7 @@ def get_active_session_count() -> int:
     try:
         with central_db() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) FROM sessions WHERE status = 'active'"
+                "SELECT COUNT(*) FROM sessions WHERE container_status IN ('running', 'idle')"
             ).fetchone()
             return row[0] if row else 0
     except Exception:
