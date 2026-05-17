@@ -1,0 +1,17 @@
+[Unit]
+Description=NanoScope Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=NANOSCOPE_BACKEND_DIR
+Environment=PYTHONPATH=.
+Environment=NANOSCOPE_HOST=0.0.0.0
+Environment=NANOSCOPE_PORT=4123
+EnvironmentFile=-NANOSCOPE_BACKEND_DIR/.env
+ExecStart=NANOSCOPE_UVICORN main:app --host $NANOSCOPE_HOST --port $NANOSCOPE_PORT
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
